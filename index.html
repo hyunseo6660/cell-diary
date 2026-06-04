@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>감정세포 일기</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      background: #0a0a1a;
+      background-image:
+        radial-gradient(ellipse at 20% 20%, rgba(120, 60, 220, 0.25) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 80%, rgba(60, 120, 220, 0.2) 0%, transparent 50%),
+        radial-gradient(ellipse at 60% 10%, rgba(220, 80, 160, 0.15) 0%, transparent 40%);
+      font-family: 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+      color: #fff;
+    }
+
+    .glass {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-radius: 20px;
+    }
+
+    /* ── 메인 ── */
+    #main {
+      padding: 24px 16px 88px;
+    }
+
+    header { text-align: center; padding: 24px 0 20px; }
+
+    header .date {
+      font-size: 11px;
+      letter-spacing: 0.15em;
+      color: rgba(255,255,255,0.35);
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    header h1 {
+      font-size: 20px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #c084fc, #818cf8, #67e8f9);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: -0.02em;
+      margin-bottom: 6px;
+    }
+
+    .diary-section { max-width: 480px; margin: 0 auto; }
+
+    .input-card { padding: 20px; margin-bottom: 16px; }
+
+    .input-card label {
+      display: block;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      color: rgba(255,255,255,0.4);
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 140px;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: rgba(255,255,255,0.9);
+      font-size: 15px;
+      line-height: 1.7;
+      resize: none;
+      font-family: inherit;
+      caret-color: #c084fc;
+    }
+
+    textarea::placeholder { color: rgba(255,255,255,0.2); }
+
+    .char-count {
+      text-align: right;
+      font-size: 11px;
+      color: rgba(255,255,255,0.25);
+      margin-top: 8px;
+    }
+
+    #analyze-btn {
+      width: 100%;
+      padding: 16px;
+      border: none;
+      border-radius: 16px;
+      background: linear-gradient(135deg, rgba(192,132,252,0.8), rgba(129,140,248,0.8));
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      border: 1px solid rgba(255,255,255,0.2);
+      transition: all 0.2s ease;
+      margin-bottom: 32px;
+    }
+
+    #analyze-btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 32px rgba(192,132,252,0.3);
+    }
+
+    #analyze-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    /* 로딩 */
+    #loading {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      padding: 32px 0;
+    }
+
+    .loading-cells {
+      display: flex;
+      gap: 10px;
+      font-size: 24px;
+    }
+
+    .loading-cells span {
+      animation: bounce 1.2s infinite ease-in-out;
+    }
+    .loading-cells span:nth-child(2) { animation-delay: 0.15s; }
+    .loading-cells span:nth-child(3) { animation-delay: 0.3s; }
+    .loading-cells span:nth-child(4) { animation-delay: 0.45s; }
+
+    @keyframes bounce {
+      0%, 80%, 100% { transform: translateY(0); opacity: 0.5; }
+      40%            { transform: translateY(-8px); opacity: 1; }
+    }
+
+    .loading-text {
+      font-size: 13px;
+      color: rgba(255,255,255,0.4);
+      letter-spacing: 0.05em;
+    }
+
+    /* 결과 */
+    .section-title {
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      color: rgba(255,255,255,0.35);
+      text-transform: uppercase;
+      margin-bottom: 14px;
+      padding-left: 4px;
+    }
+
+    .dialogue-list { display: flex; flex-direction: column; gap: 18px; margin-bottom: 32px; }
+
+    .bubble { padding: 14px 16px; border-radius: 16px; animation: bubbleIn 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards; opacity: 0; }
+
+    @keyframes bubbleIn {
+      0%   { opacity: 0; transform: translateY(12px) scale(0.95); }
+      65%  { transform: translateY(-2px) scale(1.01); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* ── typing indicator ── */
+    .typing-bubble { animation: bubbleIn 0.25s cubic-bezier(0.22, 1, 0.36, 1) forwards; opacity: 0; }
+
+    .typing-dots {
+      display: flex;
+      gap: 5px;
+      padding-left: 36px;
+      padding-top: 4px;
+    }
+    .typing-dots span {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.35);
+      animation: typingDot 1.3s infinite ease-in-out;
+    }
+    .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes typingDot {
+      0%, 60%, 100% { transform: translateY(0);    opacity: 0.3; }
+      30%            { transform: translateY(-6px); opacity: 1;   }
+    }
+
+    /* ── 이모지 흔들기 ── */
+    @keyframes wobble {
+      0%, 100% { transform: rotate(0deg)   scale(1);    }
+      18%       { transform: rotate(-13deg) scale(1.15); }
+      36%       { transform: rotate(13deg)  scale(1.15); }
+      54%       { transform: rotate(-7deg)  scale(1.07); }
+      72%       { transform: rotate(7deg)   scale(1.07); }
+      90%       { transform: rotate(-2deg)  scale(1);    }
+    }
+    .wobbling { display: inline-block; animation: wobble 0.85s ease-in-out infinite; }
+
+    .bubble-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+
+    .cell-icon {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; flex-shrink: 0;
+    }
+
+    .cell-name  { font-size: 12px; font-weight: 600; letter-spacing: 0.05em; }
+    .bubble-text { font-size: 14px; line-height: 1.65; color: rgba(255,255,255,0.82); padding-left: 36px; }
+
+    .cell-anxiety  { background: rgba(167,99,247,0.12);  border: 1px solid rgba(167,99,247,0.25); }
+    .cell-anxiety  .cell-icon { background: rgba(167,99,247,0.25); }
+    .cell-anxiety  .cell-name { color: #c084fc; }
+
+    .cell-anger    { background: rgba(239,68,68,0.1);    border: 1px solid rgba(239,68,68,0.2); }
+    .cell-anger    .cell-icon { background: rgba(239,68,68,0.2); }
+    .cell-anger    .cell-name { color: #f87171; }
+
+    .cell-reason   { background: rgba(96,165,250,0.1);   border: 1px solid rgba(96,165,250,0.2); }
+    .cell-reason   .cell-icon { background: rgba(96,165,250,0.2); }
+    .cell-reason   .cell-name { color: #93c5fd; }
+
+    .cell-avoidance { background: rgba(148,163,184,0.1); border: 1px solid rgba(148,163,184,0.2); }
+    .cell-avoidance .cell-icon { background: rgba(148,163,184,0.2); }
+    .cell-avoidance .cell-name { color: #94a3b8; }
+
+    .cell-desire   { background: rgba(251,146,60,0.1);   border: 1px solid rgba(251,146,60,0.2); }
+    .cell-desire   .cell-icon { background: rgba(251,146,60,0.2); }
+    .cell-desire   .cell-name { color: #fdba74; }
+
+    .cell-love     { background: rgba(249,168,212,0.1);  border: 1px solid rgba(249,168,212,0.2); }
+    .cell-love     .cell-icon { background: rgba(249,168,212,0.2); }
+    .cell-love     .cell-name { color: #f9a8d4; }
+
+    .ratio-card    { padding: 20px; margin-bottom: 16px; }
+    .ratio-item    { margin-bottom: 12px; }
+    .ratio-item:last-child { margin-bottom: 0; }
+
+    .ratio-label {
+      display: flex; justify-content: space-between;
+      font-size: 12px; margin-bottom: 6px;
+    }
+    .ratio-label span:first-child { color: rgba(255,255,255,0.6); }
+    .ratio-label span:last-child  { color: rgba(255,255,255,0.35); }
+
+    .ratio-bar-bg  { height: 4px; background: rgba(255,255,255,0.08); border-radius: 99px; overflow: hidden; }
+    .ratio-bar     { height: 100%; border-radius: 99px; }
+
+    .protagonist-card { padding: 20px; text-align: center; margin-bottom: 16px; }
+    .protagonist-emoji { font-size: 40px; margin-bottom: 10px; }
+    .protagonist-label { font-size: 11px; letter-spacing: 0.12em; color: rgba(255,255,255,0.35); text-transform: uppercase; margin-bottom: 6px; }
+    .protagonist-name  { font-size: 18px; font-weight: 700; color: #c084fc; margin-bottom: 14px; }
+    .protagonist-summary {
+      font-size: 14px; line-height: 1.7; color: rgba(255,255,255,0.65);
+      padding: 14px 16px;
+      background: rgba(255,255,255,0.04);
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    /* ── 조언 카드 ── */
+    .advice-card {
+      padding: 20px;
+      margin-bottom: 16px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.04);
+    }
+
+    .advice-label {
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      color: rgba(255,255,255,0.25);
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+
+    .advice-list { display: flex; flex-direction: column; gap: 12px; }
+
+    .advice-bubble {
+      padding: 12px 14px;
+      border-radius: 14px;
+      animation: bubbleIn 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      opacity: 0;
+    }
+
+    .advice-bubble .bubble-text { font-size: 13px; }
+
+    .tts-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 16px;
+      padding: 10px 20px;
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 99px;
+      background: rgba(255,255,255,0.06);
+      color: rgba(255,255,255,0.6);
+      font-size: 13px;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .tts-btn:hover {
+      background: rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.9);
+    }
+
+    .tts-btn.playing {
+      border-color: rgba(192,132,252,0.5);
+      background: rgba(192,132,252,0.1);
+      color: #c084fc;
+    }
+
+    .error-msg {
+      text-align: center; font-size: 14px;
+      color: rgba(255,255,255,0.4); padding: 32px 0;
+    }
+
+    /* 하단 네비 */
+    .bottom-nav {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      padding: 12px 32px 28px;
+      background: rgba(10,10,26,0.85);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-top: 1px solid rgba(255,255,255,0.08);
+      display: flex; justify-content: space-around;
+    }
+
+    .nav-item {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 4px; font-size: 10px; color: rgba(255,255,255,0.3); cursor: pointer;
+    }
+    .nav-item.active { color: #c084fc; }
+    .nav-icon { font-size: 20px; }
+  </style>
+</head>
+<body>
+
+  <!-- 메인 -->
+  <div id="main">
+    <header>
+      <div class="date" id="date-display"></div>
+      <h1>오늘의 감정세포</h1>
+    </header>
+
+    <div class="diary-section">
+      <div class="glass input-card">
+        <label>오늘 있었던 일</label>
+        <textarea
+          id="diary-input"
+          placeholder="오늘 어떤 일이 있었나요?&#10;편하게 써내려가세요."
+        ></textarea>
+        <div class="char-count"><span id="count">0</span> 자</div>
+      </div>
+
+      <button id="analyze-btn">세포들의 대화 보기 →</button>
+
+      <!-- 결과 -->
+      <div id="result" style="display:none;">
+        <div id="loading">
+          <div class="loading-cells">
+            <span>😰</span><span>😤</span><span>🧠</span><span>🔥</span>
+          </div>
+          <div class="loading-text">세포들이 대화 중이에요…</div>
+        </div>
+
+        <div id="dialogue-section" style="display:none;">
+          <div class="section-title">세포들의 대화</div>
+          <div class="dialogue-list" id="dialogue-list"></div>
+
+          <div class="section-title">오늘의 주인공</div>
+          <div id="protagonist-card"></div>
+
+          <div id="advice-section" style="display:none;">
+            <div class="section-title">이렇게 해봐</div>
+            <div id="advice-card"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <nav class="bottom-nav">
+      <div class="nav-item active">
+        <span class="nav-icon">✏️</span><span>일기</span>
+      </div>
+      <div class="nav-item">
+        <span class="nav-icon">📊</span><span>리포트</span>
+      </div>
+      <div class="nav-item">
+        <span class="nav-icon">📅</span><span>기록</span>
+      </div>
+    </nav>
+  </div>
+
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>
