@@ -1,60 +1,205 @@
 import { analyzeDiary } from './api.js';
 
-const CELLS = [
-  { name: '불안세포', emoji: '😰', cssClass: 'cell-anxiety',   color: '#c084fc', kaomoji: ['( •́ㅿ•̀ )', '૮ \'• ˕ •` ა'] },
-  { name: '분노세포', emoji: '😤', cssClass: 'cell-anger',     color: '#f87171', kaomoji: ['ヽ(｀⌒´)ノ', '(◟‸◞)', '( ｰ̀εｰ́ )'] },
-  { name: '이성세포', emoji: '🧠', cssClass: 'cell-reason',    color: '#93c5fd', kaomoji: [] },
-  { name: '회피세포', emoji: '😶', cssClass: 'cell-avoidance', color: '#94a3b8', kaomoji: [] },
-  { name: '욕망세포', emoji: '🔥', cssClass: 'cell-desire',    color: '#fdba74', kaomoji: ['(ง🔥Д🔥)ง', 'ᕙ(`▽´)ᕗ'] },
-  { name: '사랑세포', emoji: '💗', cssClass: 'cell-love',      color: '#f9a8d4', kaomoji: ['(,,• •,,)♥', '٩(ˊᗜˋ*)و', '(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧'] },
+// ── Cell definitions ──────────────────────────────────────────────────
+const CELLS = {
+  '불안세포': { cls: 'anxiety',   emoji: '😰', color: '#c084fc' },
+  '분노세포': { cls: 'anger',     emoji: '😤', color: '#f87171' },
+  '이성세포': { cls: 'reason',    emoji: '🧠', color: '#93c5fd' },
+  '회피세포': { cls: 'avoidance', emoji: '😶', color: '#94a3b8' },
+  '욕망세포': { cls: 'desire',    emoji: '🔥', color: '#fdba74' },
+  '사랑세포': { cls: 'love',      emoji: '💗', color: '#f9a8d4' },
+};
+
+function cell(name)  { return CELLS[name] || { cls: 'reason', emoji: '💭', color: '#93c5fd' }; }
+function cellCls(name) { return cell(name).cls; }
+
+// ── Date formatting ──────────────────────────────────────────────────
+const KO_DAYS = ['일','월','화','수','목','금','토'];
+
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function fmtDateLong(dateStr) {
+  const [y,m,d] = dateStr.split('-').map(Number);
+  const day = KO_DAYS[new Date(y, m-1, d).getDay()];
+  return `${y}년 ${m}월 ${d}일 ${day}요일`;
+}
+
+function fmtDateShort(dateStr) {
+  const [y,m,d] = dateStr.split('-').map(Number);
+  const day = KO_DAYS[new Date(y, m-1, d).getDay()];
+  return `${m}월 ${d}일 ${day}요일`;
+}
+
+// ── localStorage ─────────────────────────────────────────────────────
+const STORAGE_KEY = 'cell-diary-entries';
+
+function loadEntries() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
+  catch { return []; }
+}
+
+function saveEntry(entry) {
+  const entries = loadEntries();
+  const idx = entries.findIndex(e => e.id === entry.id);
+  if (idx >= 0) entries[idx] = entry;
+  else entries.unshift(entry);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+}
+
+// ── Screen navigation ────────────────────────────────────────────────
+function showScreen(id, direction = 'forward') {
+  document.querySelectorAll('.screen').forEach(s => {
+    s.classList.remove('active', 'back-in');
+  });
+  const el = document.getElementById(id);
+  el.classList.add('active');
+  if (direction === 'back') el.classList.add('back-in');
+}
+
+// ── Onboarding preview ───────────────────────────────────────────────
+const PREVIEW_BUBBLES = [
+  { name: '불안세포', side: 'left',  msg: '저기 얘들아… 어뜩해 어뜩해! 망했어 ( •́ㅿ•̀ )' },
+  { name: '사랑세포', side: 'right', msg: '불안세포야 왜 그래? 내가 도와줄게! ( ＾◡＾)っ ♡' },
+  { name: '이성세포', side: 'left',  msg: '지금 어떡하지 할 시간이 없어. 차분히 생각을 해보자.' },
 ];
 
-function appendKaomoji(message, cellName) {
-  const cell = CELLS.find(c => c.name === cellName);
-  if (!cell?.kaomoji.length) return message;
-  const pick = cell.kaomoji[Math.floor(Math.random() * cell.kaomoji.length)];
-  return `${message} ${pick}`;
+function renderOnboarding() {
+  const container = document.getElementById('onboarding-bubbles');
+  container.innerHTML = '';
+  PREVIEW_BUBBLES.forEach(({ name, side, msg }) => {
+    const c = cell(name);
+    const group = makeBubbleGroup(name, side, msg, false);
+    container.appendChild(group);
+  });
 }
 
+// ── Home screen ──────────────────────────────────────────────────────
+function renderHome() {
+  const entries = loadEntries();
+  const onboarding     = document.getElementById('onboarding');
+  const diaryListView  = document.getElementById('diary-list-view');
+  const btnWrite       = document.getElementById('btn-write');
 
-const dateEl            = document.getElementById('date-display');
-const diaryInput        = document.getElementById('diary-input');
-const charCountEl       = document.getElementById('count');
-const analyzeBtn        = document.getElementById('analyze-btn');
-const resultEl          = document.getElementById('result');
-const dialogueEl        = document.getElementById('dialogue-list');
-const protagonistEl     = document.getElementById('protagonist-card');
-const adviceCardEl      = document.getElementById('advice-card');
-const adviceSectionEl   = document.getElementById('advice-section');
-const loadingEl         = document.getElementById('loading');
-const dialogueSectionEl = document.getElementById('dialogue-section');
-
-function setDate() {
-  const d = new Date();
-  const days = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
-  dateEl.textContent = `${d.getFullYear()} · ${String(d.getMonth()+1).padStart(2,'0')} · ${String(d.getDate()).padStart(2,'0')} · ${days[d.getDay()]}`;
+  if (entries.length === 0) {
+    onboarding.style.display    = 'flex';
+    diaryListView.style.display = 'none';
+    btnWrite.textContent = '일기 쓰기';
+    renderOnboarding();
+  } else {
+    onboarding.style.display    = 'none';
+    diaryListView.style.display = 'block';
+    btnWrite.textContent = '오늘의 일기 쓰기';
+    renderDiaryList(entries);
+  }
 }
-setDate();
 
-diaryInput.addEventListener('input', () => {
-  charCountEl.textContent = diaryInput.value.length;
-});
+function renderDiaryList(entries) {
+  const container = document.getElementById('entries-container');
+  container.innerHTML = '';
+  entries.forEach(entry => container.appendChild(makeEntryItem(entry)));
+}
 
-// ── 스트리밍 상태 ──
+function makeEntryItem(entry) {
+  const c     = entry.result?.protagonist ? cell(entry.result.protagonist.name) : null;
+  const emoji = c?.emoji || '📓';
+  const cls   = c?.cls   || 'reason';
+  const name  = entry.result?.protagonist?.name || '';
+
+  const el = document.createElement('div');
+  el.className = 'entry-item';
+  el.innerHTML = `
+    <div class="entry-info">
+      <div class="entry-date">${fmtDateShort(entry.date)}</div>
+      <div class="entry-preview">${entry.content}</div>
+      ${name ? `<div class="entry-badge">
+        <div class="badge-dot av-${cls}">${emoji}</div>
+        <span class="nm-${cls}" style="font-weight:600">${name}</span>
+        <span style="color:rgba(255,255,255,0.35); font-size:12px">↑</span>
+      </div>` : ''}
+    </div>
+    <span class="entry-chevron">›</span>
+  `;
+  el.addEventListener('click', () => openEntryDetail(entry));
+  return el;
+}
+
+function openEntryDetail(entry) {
+  renderEntryDetail(entry);
+  showScreen('screen-entry');
+}
+
+function renderEntryDetail(entry) {
+  const body = document.getElementById('entry-detail-body');
+  const c = entry.result?.protagonist ? cell(entry.result.protagonist.name) : null;
+  const emoji = c?.emoji || '📓';
+  const cls   = c?.cls   || 'reason';
+  const summary = entry.result?.summary || '';
+
+  body.innerHTML = `
+    <div class="detail-hero">
+      <div class="detail-ava av-${cls}">${emoji}</div>
+      <div class="detail-meta">
+        <div class="detail-date">${fmtDateLong(entry.date)}</div>
+        <div class="detail-summary">${summary}</div>
+      </div>
+    </div>
+    <div class="detail-divider"></div>
+    <div class="detail-content">${entry.content}</div>
+  `;
+}
+
+// ── Bubble builder ───────────────────────────────────────────────────
+function makeBubbleGroup(cellName, side, message, animate = true) {
+  const c = cell(cellName);
+  const group = document.createElement('div');
+  group.className = `bubble-group ${side}`;
+  if (!animate) group.style.animation = 'none'; // static preview
+
+  const ava = document.createElement('div');
+  ava.className = `cell-ava av-${c.cls}`;
+  ava.textContent = c.emoji;
+
+  const col = document.createElement('div');
+  col.className = 'bubble-col';
+
+  const name = document.createElement('span');
+  name.className = `bubble-name nm-${c.cls}`;
+  name.textContent = cellName;
+
+  const msg = document.createElement('div');
+  msg.className = `bubble-msg msg-${c.cls}`;
+
+  col.appendChild(name);
+  col.appendChild(msg);
+  group.appendChild(ava);
+  group.appendChild(col);
+  return group;
+}
+
+// ── Streaming state ──────────────────────────────────────────────────
 let streamBuffer   = '';
 let renderedCount  = 0;
 let pendingItems   = [];
 let isRendering    = false;
 let typingEl       = null;
 let streamDone     = false;
+let currentResult  = null;
+let currentContent = '';
+let dialogueIndex  = 0; // for left/right alternation
 
 function resetStream() {
   streamBuffer = ''; renderedCount = 0;
   pendingItems = []; isRendering = false;
   typingEl = null; streamDone = false;
+  currentResult = null; dialogueIndex = 0;
+  document.getElementById('dialogue-list').innerHTML = '';
+  document.getElementById('btn-to-result').classList.remove('visible');
 }
 
-// buffer에서 완성된 dialogue 항목 추출 — dialogue 배열 범위 안에서만 탐색
+// Extract completed dialogue items from streaming buffer
 function extractDialogueItems(buf) {
   const items = [];
   const di = buf.indexOf('"dialogue"');
@@ -62,15 +207,10 @@ function extractDialogueItems(buf) {
   const ai = buf.indexOf('[', di);
   if (ai === -1) return items;
 
-  // dialogue 배열의 닫히는 ] 위치를 추적 (아직 안 닫혔으면 buf.length까지만)
-  let arrayDepth = 0;
-  let arrayEnd = -1;
+  let arrayDepth = 0, arrayEnd = -1;
   for (let j = ai; j < buf.length; j++) {
     if (buf[j] === '[') arrayDepth++;
-    else if (buf[j] === ']') {
-      arrayDepth--;
-      if (arrayDepth === 0) { arrayEnd = j; break; }
-    }
+    else if (buf[j] === ']') { arrayDepth--; if (arrayDepth === 0) { arrayEnd = j; break; } }
   }
   const limit = arrayEnd !== -1 ? arrayEnd : buf.length;
 
@@ -86,57 +226,68 @@ function extractDialogueItems(buf) {
     if (end === -1) break;
     try {
       const obj = JSON.parse(buf.slice(start, end + 1));
-      if (obj.cell && obj.emoji && obj.message) items.push(obj);
+      if (obj.cell && obj.message) items.push(obj);
     } catch {}
     i = end + 1;
   }
   return items;
 }
 
-// 스트리밍 버퍼에서 다음으로 올 세포 이름을 미리 감지
 function peekNextCell(idx) {
   const matches = [...streamBuffer.matchAll(/"cell"\s*:\s*"([^"]+)"/g)];
   return matches[idx]?.[1] ?? null;
 }
 
-// ── 말풍선 ──
+// ── Typing indicator ──────────────────────────────────────────────────
 function showTypingIndicator() {
   removeTypingIndicator();
   const nextName = peekNextCell(renderedCount);
-  const nextCell = nextName ? CELLS.find(c => c.name === nextName) : null;
-  const emoji    = nextCell?.emoji ?? '💭';
+  const nextCell = nextName ? cell(nextName) : null;
+  const side     = (renderedCount % 2 === 0) ? 'left' : 'right';
 
-  typingEl = document.createElement('div');
-  typingEl.className = `bubble glass typing-bubble ${nextCell?.cssClass ?? ''}`;
-  typingEl.innerHTML = `
-    <div class="bubble-header">
-      <div class="cell-icon wobbling">${emoji}</div>
-      <span class="cell-name">${nextName ?? '…'}</span>
-    </div>
-    <div class="typing-dots"><span></span><span></span><span></span></div>
-  `;
-  dialogueEl.appendChild(typingEl);
-  typingEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  const group = document.createElement('div');
+  group.className = `bubble-group ${side} typing-bubble`;
+
+  const ava = document.createElement('div');
+  ava.className = `cell-ava ${nextCell ? `av-${nextCell.cls}` : ''}`;
+  ava.textContent = nextCell?.emoji || '💭';
+
+  const col = document.createElement('div');
+  col.className = 'bubble-col';
+  if (side === 'right') col.style.alignItems = 'flex-end';
+
+  const name = document.createElement('span');
+  name.className = `bubble-name ${nextCell ? `nm-${nextCell.cls}` : ''}`;
+  name.textContent = nextName || '…';
+
+  const dots = document.createElement('div');
+  dots.className = 'typing-dots';
+  dots.innerHTML = '<span></span><span></span><span></span>';
+
+  col.appendChild(name);
+  col.appendChild(dots);
+  group.appendChild(ava);
+  group.appendChild(col);
+
+  const list = document.getElementById('dialogue-list');
+  list.appendChild(group);
+  typingEl = group;
+  group.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function removeTypingIndicator() {
   if (typingEl) { typingEl.remove(); typingEl = null; }
 }
 
-function addBubble(item) {
-  const cell   = CELLS.find(c => c.name === item.cell) || {};
-  const bubble = document.createElement('div');
-  bubble.className = `bubble glass ${cell.cssClass ?? ''}`;
-  bubble.innerHTML = `
-    <div class="bubble-header">
-      <div class="cell-icon">${item.emoji}</div>
-      <span class="cell-name">${item.cell}</span>
-    </div>
-    <div class="bubble-text"></div>
-  `;
-  dialogueEl.appendChild(bubble);
-  bubble.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  return bubble.querySelector('.bubble-text');
+// ── Bubble rendering with typing animation ───────────────────────────
+function addStreamBubble(item) {
+  const side  = (dialogueIndex % 2 === 0) ? 'left' : 'right';
+  const group = makeBubbleGroup(item.cell, side, item.message);
+  const list  = document.getElementById('dialogue-list');
+  list.appendChild(group);
+  dialogueIndex++;
+  group.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  return group.querySelector('.bubble-msg');
 }
 
 function typeMessage(textEl, text) {
@@ -144,214 +295,233 @@ function typeMessage(textEl, text) {
     let i = 0;
     const speed = text.length > 40 ? 22 : 30;
     const tick = setInterval(() => {
-      if (i < text.length) {
-        textEl.textContent += text[i++];
-      } else {
-        clearInterval(tick);
-        resolve();
-      }
+      if (i < text.length) { textEl.textContent += text[i++]; }
+      else { clearInterval(tick); resolve(); }
     }, speed);
   });
 }
 
-// 버블을 순차 렌더링 — 타이핑이 끝난 후 typing indicator → 다음 버블
 async function renderNextPending() {
   if (isRendering || pendingItems.length === 0) return;
   isRendering = true;
 
   const item = pendingItems.shift();
-  item.message = appendKaomoji(item.message, item.cell);
   removeTypingIndicator();
-  const textEl = addBubble(item);
+  const textEl = addStreamBubble(item);
   renderedCount++;
 
   await typeMessage(textEl, item.message);
 
-  // 마지막 버블이면 typing indicator 없이 바로 종료
   const isLast = streamDone && pendingItems.length === 0;
   if (!isLast) {
-    await new Promise(r => setTimeout(r, 500));  // 발언 끝 여운
+    await new Promise(r => setTimeout(r, 450));
     showTypingIndicator();
-    await new Promise(r => setTimeout(r, 1100)); // 다음 세포 타이핑 중 대기
+    await new Promise(r => setTimeout(r, 1050));
   } else {
-    await new Promise(r => setTimeout(r, 300));
+    await new Promise(r => setTimeout(r, 250));
   }
 
   isRendering = false;
   renderNextPending();
 }
 
-// ── 결과 렌더링 ──
-function clearResult() {
-  dialogueEl.innerHTML = '';
-  protagonistEl.innerHTML = '';
-  adviceCardEl.innerHTML = '';
-  adviceSectionEl.style.display = 'none';
-  resultEl.style.display = 'none';
-  dialogueSectionEl.style.display = 'none';
-}
-
-
-function renderProtagonist(protagonist, summary) {
-  protagonistEl.className = 'glass protagonist-card';
-  protagonistEl.innerHTML = `
-    <div class="protagonist-emoji">${protagonist.emoji}</div>
-    <div class="protagonist-label">Today's Cell</div>
-    <div class="protagonist-name">${protagonist.name}</div>
-    <div class="protagonist-summary">${summary}</div>
-  `;
-}
-
-let ttsController = null;
-
-async function playAdvice(advice, btn) {
-  if (ttsController) {
-    ttsController.abort();
-    ttsController = null;
-    btn.textContent = '▶ 듣기';
-    btn.classList.remove('playing');
-    return;
-  }
-
-  ttsController = new AbortController();
-  btn.textContent = '■ 멈추기';
-  btn.classList.add('playing');
-
-  try {
-    for (const item of advice) {
-      if (ttsController.signal.aborted) break;
-
-      const res = await fetch('/api/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: item.message, cell: item.cell }),
-        signal: ttsController.signal,
-      });
-
-      if (!res.ok) break;
-
-      const blob = await res.blob();
-      if (ttsController.signal.aborted) break;
-
-      const url = URL.createObjectURL(blob);
-      await new Promise((resolve, reject) => {
-        const audio = new Audio(url);
-        audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
-        audio.onerror = reject;
-        ttsController.signal.addEventListener('abort', () => {
-          audio.pause();
-          URL.revokeObjectURL(url);
-          resolve();
-        });
-        audio.play();
-      });
-    }
-  } catch (err) {
-    if (err.name !== 'AbortError') console.error(err);
-  } finally {
-    ttsController = null;
-    btn.textContent = '▶ 듣기';
-    btn.classList.remove('playing');
-  }
-}
-
-function renderAdvice(advice) {
-  adviceCardEl.className = 'glass advice-card';
-  const list = document.createElement('div');
-  list.className = 'advice-list';
-  advice.forEach((item, i) => {
-    const cell = CELLS.find(c => c.name === item.cell) || {};
-    const bubble = document.createElement('div');
-    bubble.className = `advice-bubble ${cell.cssClass ?? ''}`;
-    bubble.style.animationDelay = `${i * 0.15}s`;
-    bubble.innerHTML = `
-      <div class="bubble-header">
-        <div class="cell-icon">${item.emoji}</div>
-        <span class="cell-name">${item.cell}</span>
-      </div>
-      <div class="bubble-text">${item.message}</div>
-    `;
-    list.appendChild(bubble);
-  });
-
-  const playBtn = document.createElement('button');
-  playBtn.className = 'tts-btn';
-  playBtn.textContent = '▶ 듣기';
-  playBtn.addEventListener('click', () => playAdvice(advice, playBtn));
-
-  adviceCardEl.appendChild(list);
-  adviceCardEl.appendChild(playBtn);
-}
-
-function renderError(msg) {
-  dialogueEl.innerHTML = `<div class="error-msg">${msg}</div>`;
-}
-
-function setDone() {
-  analyzeBtn.disabled = false;
-  analyzeBtn.textContent = '세포들의 대화 보기 →';
-}
-
-// ── 분석 실행 ──
-analyzeBtn.addEventListener('click', async () => {
-  const content = diaryInput.value.trim();
-  if (content.length < 10) return;
-
-  clearResult();
+// ── Submit diary ─────────────────────────────────────────────────────
+async function startDialogue(content, date) {
+  showScreen('screen-dialogue');
   resetStream();
-
-  analyzeBtn.disabled = true;
-  analyzeBtn.textContent = '세포들이 대화 중…';
-  loadingEl.style.display = 'none';
-  resultEl.style.display = 'block';
-  dialogueSectionEl.style.display = 'block';
-  resultEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
   showTypingIndicator();
-
-  const date = new Date().toISOString().split('T')[0];
 
   try {
     await analyzeDiary(content, date, {
-      onDelta: (text) => {
+      onDelta(text) {
         streamBuffer += text;
         const items = extractDialogueItems(streamBuffer);
         const totalQueued = renderedCount + pendingItems.length;
         items.slice(totalQueued).forEach(item => pendingItems.push(item));
         renderNextPending();
       },
-      onComplete: (result) => {
+      onComplete(result) {
         streamDone = true;
-        // 스트리밍에서 놓친 항목 보완
+        currentResult = result;
+
         const totalQueued = renderedCount + pendingItems.length;
         result.dialogue.slice(totalQueued).forEach(item => pendingItems.push(item));
 
         const waitAndFinalize = () => {
-          if (isRendering || pendingItems.length > 0) {
-            setTimeout(waitAndFinalize, 100);
-            return;
-          }
+          if (isRendering || pendingItems.length > 0) { setTimeout(waitAndFinalize, 100); return; }
           removeTypingIndicator();
-          renderProtagonist(result.protagonist, result.summary);
-          if (result.advice?.length) {
-            renderAdvice(result.advice);
-            adviceSectionEl.style.display = 'block';
-          }
-          setDone();
+
+          // Save entry
+          const entry = { id: date, date, content, result };
+          saveEntry(entry);
+          renderHome(); // refresh home in background
+
+          // Show summarize button
+          document.getElementById('btn-to-result').classList.add('visible');
         };
         waitAndFinalize();
       },
-      onError: (err) => {
+      onError(err) {
         removeTypingIndicator();
-        renderError(err.message);
-        setDone();
+        const list = document.getElementById('dialogue-list');
+        const errEl = document.createElement('div');
+        errEl.style.cssText = 'padding:32px 20px; text-align:center; color:rgba(255,255,255,0.4); font-size:14px';
+        errEl.textContent = err.message;
+        list.appendChild(errEl);
       },
     });
   } catch (err) {
     if (err.name !== 'AbortError') {
       removeTypingIndicator();
-      renderError('세포들이 잠시 혼란스러운 것 같아요. 다시 시도해주세요.');
-      setDone();
+      const list = document.getElementById('dialogue-list');
+      const errEl = document.createElement('div');
+      errEl.style.cssText = 'padding:32px 20px; text-align:center; color:rgba(255,255,255,0.4); font-size:14px';
+      errEl.textContent = '세포들이 잠시 혼란스러운 것 같아요. 다시 시도해주세요.';
+      list.appendChild(errEl);
     }
   }
+}
+
+// ── Result tabs ──────────────────────────────────────────────────────
+function renderResultScreen(result, content) {
+  renderSummaryTab(result, content);
+  renderDialogueTab(result.dialogue);
+}
+
+function renderSummaryTab(result, content) {
+  const panel = document.getElementById('tab-summary');
+  const proto  = result.protagonist;
+  const c      = cell(proto.name);
+
+  // Protagonist + diary content
+  const partnerAdvice = result.advice?.[1];
+  const partnerCell   = partnerAdvice ? cell(partnerAdvice.cell) : null;
+
+  panel.innerHTML = '';
+
+  // Section 1: protagonist + diary text
+  const block1 = document.createElement('div');
+  block1.className = 'summary-block';
+  block1.innerHTML = `
+    <div class="sum-ava av-${c.cls}">${c.emoji}</div>
+    <div class="sum-body">
+      <div class="sum-label">${proto.name}가 많이 움직였어요</div>
+      <div class="sum-text">${escHtml(content)}</div>
+    </div>
+  `;
+  panel.appendChild(block1);
+
+  // Summary sentence
+  if (result.summary) {
+    const sentence = document.createElement('div');
+    sentence.className = 'summary-sentence';
+    sentence.textContent = result.summary;
+    panel.appendChild(sentence);
+  }
+
+  // Divider
+  const div = document.createElement('div');
+  div.className = 'summary-divider';
+  div.style.margin = '16px 20px';
+  panel.appendChild(div);
+
+  // Section 2: advice partner
+  if (partnerAdvice && partnerCell) {
+    const block2 = document.createElement('div');
+    block2.className = 'summary-block';
+    block2.innerHTML = `
+      <div class="sum-ava av-${partnerCell.cls}">${partnerCell.emoji}</div>
+      <div class="sum-body">
+        <div class="sum-label">${partnerAdvice.cell}가 한마디 했어요</div>
+        <div class="sum-text">${escHtml(partnerAdvice.message)}</div>
+      </div>
+    `;
+    panel.appendChild(block2);
+  }
+}
+
+function renderDialogueTab(dialogue) {
+  const panel = document.getElementById('tab-dialogue');
+  panel.innerHTML = '';
+  const wrap = document.createElement('div');
+  wrap.className = 'static-dialogue';
+  dialogue.forEach((item, i) => {
+    const side  = (i % 2 === 0) ? 'left' : 'right';
+    const group = makeBubbleGroup(item.cell, side, item.message, false);
+    group.querySelector('.bubble-msg').textContent = item.message;
+    group.style.opacity = '1';
+    wrap.appendChild(group);
+  });
+  panel.appendChild(wrap);
+}
+
+function escHtml(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/\n/g, '<br>');
+}
+
+// ── Event wiring ─────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+
+  // Home
+  renderHome();
+
+  document.getElementById('btn-write').addEventListener('click', () => {
+    document.getElementById('diary-input').value = '';
+    document.getElementById('char-num').textContent = '0';
+    showScreen('screen-write');
+    setTimeout(() => document.getElementById('diary-input').focus(), 250);
+  });
+
+  // Write
+  document.getElementById('write-back').addEventListener('click', () => {
+    showScreen('screen-home', 'back');
+  });
+
+  document.getElementById('diary-input').addEventListener('input', e => {
+    document.getElementById('char-num').textContent = e.target.value.length;
+  });
+
+  document.getElementById('btn-submit').addEventListener('click', () => {
+    const content = document.getElementById('diary-input').value.trim();
+    if (content.length < 5) return;
+    currentContent = content;
+    startDialogue(content, todayStr());
+  });
+
+  // Dialogue
+  document.getElementById('dialogue-back').addEventListener('click', () => {
+    showScreen('screen-write', 'back');
+  });
+
+  document.getElementById('btn-to-result').addEventListener('click', () => {
+    if (!currentResult) return;
+    renderResultScreen(currentResult, currentContent);
+    showScreen('screen-result');
+  });
+
+  // Result
+  document.getElementById('result-back').addEventListener('click', () => {
+    showScreen('screen-home', 'back');
+  });
+
+  // Tabs
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tabId = btn.dataset.tab;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(tabId).classList.add('active');
+    });
+  });
+
+  // Entry detail
+  document.getElementById('entry-back').addEventListener('click', () => {
+    showScreen('screen-home', 'back');
+  });
 });
