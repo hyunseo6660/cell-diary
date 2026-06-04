@@ -25,17 +25,46 @@
       --pink:     #f9a8d4;
     }
 
-    html, body {
+    html {
       height: 100%; overflow: hidden;
-      background: var(--bg);
+      background: #07071a;
+      background-image:
+        radial-gradient(ellipse 70% 60% at 50% 50%, rgba(55,25,110,0.45) 0%, transparent 65%),
+        radial-gradient(ellipse 50% 40% at 20% 80%, rgba(30,60,140,0.25) 0%, transparent 60%);
+      display: flex; align-items: center; justify-content: center;
       font-family: 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
       color: var(--text);
     }
 
-    /* Fixed background blobs */
+    body {
+      /* phone frame on desktop */
+      width: 390px;
+      height: min(844px, 100dvh);
+      position: relative; overflow: hidden;
+      border-radius: 44px;
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.10),
+        0 0 0 10px rgba(255,255,255,0.04),
+        0 60px 120px rgba(0,0,0,0.75),
+        inset 0 1px 0 rgba(255,255,255,0.12);
+      background: var(--bg);
+    }
+
+    /* on real mobile — full screen */
+    @media (max-width: 500px) {
+      html { background: var(--bg); }
+      body {
+        width: 100vw;
+        height: 100dvh;
+        border-radius: 0;
+        box-shadow: none;
+      }
+    }
+
+    /* App background blobs — inside the device */
     body::before {
       content: '';
-      position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      position: absolute; inset: 0; pointer-events: none; z-index: 0;
       background:
         radial-gradient(ellipse 65% 55% at 12% 18%, rgba(110,55,210,0.22) 0%, transparent 100%),
         radial-gradient(ellipse 55% 65% at 88% 75%, rgba(55,90,210,0.18) 0%, transparent 100%),
@@ -45,7 +74,7 @@
 
     /* ── Screen system ── */
     .screen {
-      position: fixed; inset: 0;
+      position: absolute; inset: 0;
       display: none; flex-direction: column;
       z-index: 1;
     }
@@ -95,7 +124,7 @@
 
     /* ── Bottom bar ── */
     .bottom-bar {
-      padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+      padding: 12px 16px 12px;
       background: rgba(11,11,30,0.82);
       backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
       border-top: 1px solid var(--border);
@@ -208,7 +237,7 @@
 
     /* Summary button — right-aligned in bottom bar */
     .bottom-bar-right {
-      padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+      padding: 12px 16px 12px;
       background: rgba(11,11,30,0.82);
       backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
       border-top: 1px solid var(--border);
